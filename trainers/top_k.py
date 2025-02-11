@@ -9,9 +9,9 @@ import torch.nn as nn
 from collections import namedtuple
 from typing import Optional
 
-from ..config import DEBUG
-from ..dictionary import Dictionary
-from ..trainers.trainer import (
+from config import DEBUG
+from dictionary import Dictionary
+from trainers.trainer import (
     SAETrainer,
     get_lr_schedule,
     set_decoder_norm_to_unit_norm,

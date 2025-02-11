@@ -4,9 +4,9 @@ Implements the standard SAE training scheme.
 import torch as t
 from typing import Optional
 
-from ..trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
-from ..config import DEBUG
-from ..dictionary import AutoEncoder
+from trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
+from config import DEBUG
+from dictionary import AutoEncoder
 from collections import namedtuple
 
 class StandardTrainer(SAETrainer):

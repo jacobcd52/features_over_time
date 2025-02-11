@@ -5,8 +5,8 @@ import einops
 from collections import namedtuple
 from typing import Optional
 
-from ..dictionary import Dictionary
-from ..trainers.trainer import (
+from dictionary import Dictionary
+from trainers.trainer import (
     SAETrainer,
     get_lr_schedule,
     set_decoder_norm_to_unit_norm,

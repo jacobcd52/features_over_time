@@ -14,9 +14,9 @@ from tqdm import tqdm
 
 import wandb
 
-from .dictionary import AutoEncoder
-from .evaluation import evaluate
-from .trainers.standard import StandardTrainer
+from dictionary import AutoEncoder
+from evaluation import evaluate
+from trainers.standard import StandardTrainer
 
 
 def new_wandb_process(config, log_queue, entity, project):

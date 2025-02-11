@@ -4,9 +4,9 @@ from typing import Optional
 Implements the standard SAE training scheme.
 """
 
-from ..dictionary import AutoEncoder
-from ..trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
-from ..config import DEBUG
+from dictionary import AutoEncoder
+from trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
+from config import DEBUG
 
 class PAnnealTrainer(SAETrainer):
     """

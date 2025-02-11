@@ -5,9 +5,9 @@ Implements the training scheme for a gated SAE described in https://arxiv.org/ab
 import torch as t
 from typing import Optional
 
-from ..trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
-from ..config import DEBUG
-from ..dictionary import GatedAutoEncoder
+from trainers.trainer import SAETrainer, get_lr_schedule, get_sparsity_warmup_fn, ConstrainedAdam
+from config import DEBUG
+from dictionary import GatedAutoEncoder
 from collections import namedtuple
 
 class GatedAnnealTrainer(SAETrainer):

@@ -1,7 +1,7 @@
-from .standard import StandardTrainer
-from .gdm import GatedSAETrainer
-from .p_anneal import PAnnealTrainer
-from .gated_anneal import GatedAnnealTrainer
-from .top_k import TopKTrainer
-from .jumprelu import JumpReluTrainer
-from .batch_top_k import BatchTopKTrainer, BatchTopKSAE
+from trainers.standard import StandardTrainer
+from trainers.gdm import GatedSAETrainer
+from trainers.p_anneal import PAnnealTrainer
+from trainers.gated_anneal import GatedAnnealTrainer
+from trainers.top_k import TopKTrainer
+from trainers.jumprelu import JumpReluTrainer
+from trainers.batch_top_k import BatchTopKTrainer, BatchTopKSAE
