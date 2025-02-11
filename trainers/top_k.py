@@ -68,6 +68,10 @@ class AutoEncoderTopK(Dictionary, nn.Module):
         assert isinstance(k, int) and k > 0, f"k={k} must be a positive integer"
         self.register_buffer("k", t.tensor(k, dtype=t.int))
         self.register_buffer("threshold", t.tensor(-1.0, dtype=t.float32))
+        
+        # Initialize buffers but don't set their shape yet - will be set when loading state dict
+        self.register_buffer("act_mean", None)
+        self.register_buffer("act_std", None)
 
         self.decoder = nn.Linear(dict_size, activation_dim, bias=False)
         self.decoder.weight.data = set_decoder_norm_to_unit_norm(
@@ -79,6 +83,22 @@ class AutoEncoderTopK(Dictionary, nn.Module):
         self.encoder.bias.data.zero_()
 
         self.b_dec = nn.Parameter(t.zeros(activation_dim))
+
+    def _resize_buffers(self, state_dict):
+        """Helper method to resize buffers based on loaded state dict"""
+        if 'act_mean' in state_dict:
+            mean_shape = state_dict['act_mean'].shape
+            std_shape = state_dict['act_std'].shape
+            self.register_buffer("act_mean", t.zeros(mean_shape))
+            self.register_buffer("act_std", t.zeros(std_shape))
+        else:
+            self.register_buffer("act_mean", t.zeros(1))
+            self.register_buffer("act_std", t.zeros(1))
+
+    def load_state_dict(self, state_dict, strict: bool = True):
+        """Override load_state_dict to handle buffer resizing"""
+        self._resize_buffers(state_dict)
+        return super().load_state_dict(state_dict, strict)
 
     def encode(self, x: t.Tensor, return_topk: bool = False, use_threshold: bool = False):
         post_relu_feat_acts_BF = nn.functional.relu(self.encoder(x - self.b_dec))
@@ -122,7 +142,8 @@ class AutoEncoderTopK(Dictionary, nn.Module):
         if self.threshold >= 0:
             self.threshold *= scale
 
-    def from_pretrained(path, k: Optional[int] = None, device=None):
+    @classmethod
+    def from_pretrained(cls, path, k: Optional[int] = None, device=None):
         """
         Load a pretrained autoencoder from a file.
         """
@@ -134,11 +155,53 @@ class AutoEncoderTopK(Dictionary, nn.Module):
         elif "k" in state_dict and k != state_dict["k"].item():
             raise ValueError(f"k={k} != {state_dict['k'].item()}=state_dict['k']")
 
-        autoencoder = AutoEncoderTopK(activation_dim, dict_size, k)
+        autoencoder = cls(activation_dim, dict_size, k)
         autoencoder.load_state_dict(state_dict)
         if device is not None:
             autoencoder.to(device)
         return autoencoder
+
+    @classmethod
+    def from_hf(cls, repo_id: str, trainer_idx: int = 0, k: Optional[int] = None, device=None):
+        """
+        Load a pretrained autoencoder from HuggingFace Hub.
+        
+        Args:
+            repo_id: str, the HuggingFace repository ID (e.g., "username/repo-name")
+            trainer_idx: int, which trainer's model to load if multiple were saved
+            k: Optional[int], override the k value from the saved model
+            device: Optional[str], device to load the model to
+        """
+        from huggingface_hub import hf_hub_download
+        
+        try:
+            # Download the model file
+            model_path = hf_hub_download(
+                repo_id=repo_id,
+                filename=f"trainer_{trainer_idx}/ae.pt",
+                repo_type="model"
+            )
+            
+            # Download the config file
+            config_path = hf_hub_download(
+                repo_id=repo_id,
+                filename=f"trainer_{trainer_idx}/config.json",
+                repo_type="model"
+            )
+            
+            # Load the model
+            autoencoder = cls.from_pretrained(model_path, k=k, device=device)
+            
+            # Optionally load and attach config
+            import json
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            autoencoder.config = config
+            
+            return autoencoder
+            
+        except Exception as e:
+            raise RuntimeError(f"Error loading model from HuggingFace Hub: {str(e)}")
 
 
 class TopKTrainer(SAETrainer):

@@ -8,6 +8,7 @@ import os
 from queue import Empty
 from typing import Optional
 from contextlib import nullcontext
+from huggingface_hub import HfApi
 
 import torch as t
 from tqdm import tqdm
@@ -54,11 +55,11 @@ def log_stats(
 
                 # L0
                 l0 = (f != 0).float().sum(dim=-1).mean().item()
-                # fraction of variance explained
+                # fraction of variance unexplained
                 total_variance = t.var(act, dim=0).sum()
                 residual_variance = t.var(act - act_hat, dim=0).sum()
-                frac_variance_explained = 1 - residual_variance / total_variance
-                log[f"frac_variance_explained"] = frac_variance_explained.item()
+                fvu = residual_variance / total_variance
+                log["FVU"] = fvu.item()
             else:  # transcoder
                 x, x_hat, f, losslog = trainer.loss(act, step=step, logging=True)
 
@@ -66,7 +67,7 @@ def log_stats(
                 l0 = (f != 0).float().sum(dim=-1).mean().item()
 
             if verbose:
-                print(f"Step {step}: L0 = {l0}, frac_variance_explained = {frac_variance_explained}")
+                print(f"Step {step}: L0 = {l0}, fvu = {fvu}")
 
             # log parameters from training
             log.update({f"{k}": v.cpu().item() if isinstance(v, t.Tensor) else v for k, v in losslog.items()})
@@ -118,6 +119,7 @@ def trainSAE(
     wandb_project:str="",
     save_steps:Optional[list[int]]=None,
     save_dir:Optional[str]=None,
+    hf_repo_out:Optional[str]=None,  # New parameter
     log_steps:Optional[int]=None,
     activations_split_by_head:bool=False,
     transcoder:bool=False,
@@ -135,6 +137,11 @@ def trainSAE(
     This is very helpful for hyperparameter transfer between different layers and models.
 
     Setting autocast_dtype to t.bfloat16 provides a significant speedup with minimal change in performance.
+
+    Args:
+        ...existing args...
+        hf_repo_out: Optional[str], if provided, will upload the trained model(s) to this HF repo
+                     Format should be "username/repo-name" or "organization/repo-name"
     """
 
     device_type = "cuda" if "cuda" in device else "cpu"
@@ -147,6 +154,20 @@ def trainSAE(
         trainer_class = config["trainer"]
         del config["trainer"]
         trainers.append(trainer_class(**config))
+
+    # If the data buffer has rescaling statistics, transfer them to the autoencoders
+    if hasattr(data, 'rescale_acts') and data.rescale_acts:
+        for trainer in trainers:
+            # Transfer the statistics
+            trainer.ae.act_mean = data.act_mean.clone()
+            trainer.ae.act_std = data.act_std.clone()
+            
+            # Update config to record that rescaling was used
+            trainer.config['used_buffer_rescaling'] = True
+            trainer.config['buffer_rescaling_stats'] = {
+                'mean_shape': list(data.act_mean.shape),
+                'std_shape': list(data.act_std.shape)
+            }
 
     wandb_processes = []
     log_queues = []
@@ -244,6 +265,44 @@ def trainSAE(
         if save_dir is not None:
             final = {k: v.cpu() for k, v in trainer.ae.state_dict().items()}
             t.save(final, os.path.join(save_dir, "ae.pt"))
+
+    # Upload to HuggingFace if specified
+    if hf_repo_out is not None:
+        print(f"Uploading to HuggingFace repo: {hf_repo_out}")
+        api = HfApi()
+        
+        for i, (save_dir, trainer) in enumerate(zip(save_dirs, trainers)):
+            if save_dir is not None:
+                # Create a folder for this specific trainer in the repo
+                repo_path = f"{hf_repo_out}/trainer_{i}"
+                
+                # Save config and model files
+                config_path = os.path.join(save_dir, "config.json")
+                model_path = os.path.join(save_dir, "ae.pt")
+                
+                try:
+                    # Upload config
+                    api.upload_file(
+                        path_or_fileobj=config_path,
+                        path_in_repo=f"trainer_{i}/config.json",
+                        repo_id=hf_repo_out,
+                        repo_type="model",
+                    )
+                    
+                    # Upload model
+                    api.upload_file(
+                        path_or_fileobj=model_path,
+                        path_in_repo=f"trainer_{i}/ae.pt",
+                        repo_id=hf_repo_out,
+                        repo_type="model",
+                    )
+                    
+                    if verbose:
+                        print(f"Successfully uploaded trainer_{i} to {hf_repo_out}")
+                        
+                except Exception as e:
+                    print(f"Error uploading trainer_{i} to HuggingFace: {str(e)}")
+                    continue
 
     # Signal wandb processes to finish
     if use_wandb:
