@@ -8,13 +8,13 @@ from trainers.top_k import TopKTrainer, AutoEncoderTopK
 from training import trainSAE
 
 device = "cuda:0"
-dtype = t.bfloat16
+dtype = t.float32
 
 #%%
 layer = 4
 expansion = 16
 num_tokens = int(500e6)
-out_batch_size = 8192
+out_batch_size = 8192 * 2
 
 submodule_list = []
 model_list = []
@@ -63,7 +63,7 @@ buffer = MultiModelActivationBuffer(
     refresh_batch_size=512,
     out_batch_size=out_batch_size,
     rescale_acts=True,
-    n_init_batches=10,
+    n_init_batches=1,
     remove_bos=True
 )  # buffer will yield batches of tensors of dimension = submodule's output dimension
 
