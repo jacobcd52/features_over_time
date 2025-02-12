@@ -259,6 +259,79 @@ class MultiModelActivationBuffer:
                 rescaled tensor of same shape
             """
             return (stacked_acts - self.act_mean[None, :, :]) / (self.act_std[None, :, :] + 1e-8)
+    
+    def get_seq_batch(self):
+        """
+        Return a batch of activations with shape [batch, seq, n_models*d] along with their corresponding tokens.
+        Returns:
+            activations: tensor of shape [batch, seq, n_models*d]
+            tokens: tensor of shape [batch, seq]
+        """
+        tokens = self.tokenized_batch()
+        all_model_activations = []
+        all_seq_lengths = []
+        token_ids = tokens['input_ids']
+        attn_mask = tokens['attention_mask']
+        
+        if self.remove_bos:
+            token_ids = token_ids[:, 1:]
+            attn_mask = attn_mask[:, 1:]
+
+        # Process the same text through each model
+        for model, submodule in zip(self.model_list, self.submodule_list):
+            with t.no_grad():
+                with model.trace(
+                    tokens,
+                    **tracer_kwargs,
+                    invoker_args={"truncation": True, "max_length": self.ctx_len},
+                ):
+                    if self.io == "in":
+                        hidden_states = submodule.inputs[0].save()
+                    else:
+                        hidden_states = submodule.output.save()
+                    submodule.output.stop()
+                
+                hidden_states = hidden_states.value
+                if isinstance(hidden_states, tuple):
+                    hidden_states = hidden_states[0]
+                if self.remove_bos:
+                    hidden_states = hidden_states[:, 1:, :]
+                
+                # Move states to CPU before appending to save GPU memory
+                all_model_activations.append(hidden_states.cpu())
+                all_seq_lengths.append(hidden_states.shape[1])
+
+                # Clear GPU tensors explicitly
+                del hidden_states
+                t.cuda.empty_cache()
+
+        # Use the minimum sequence length across models
+        min_seq_length = min(all_seq_lengths)
+        
+        # Stack instead of concatenate along model dimension
+        stacked_activations = t.stack([acts[:, :min_seq_length] for acts in all_model_activations], dim=2)  # [batch, seq, n_models, d]
+        if self.rescale_acts:
+            # Reshape for rescaling
+            b, s, n, d = stacked_activations.shape
+            reshaped_acts = stacked_activations.reshape(-1, n, d)  # [batch*seq, n_models, d]
+            rescaled_acts = self.apply_rescaling(reshaped_acts)
+            stacked_activations = rescaled_acts.reshape(b, s, n, d)
+        
+        # Convert to concatenated form for last dimension
+        concat_activations = stacked_activations.reshape(stacked_activations.shape[0], 
+                                                    stacked_activations.shape[1], 
+                                                    -1)  # [batch, seq, n_models*d]
+        
+        # Keep tokens in [batch, seq] shape, just truncate to min_seq_length
+        valid_tokens = token_ids[:, :min_seq_length]
+        
+        # Clear intermediate tensors
+        del all_model_activations
+        del stacked_activations
+        gc.collect()
+        t.cuda.empty_cache()
+
+        return concat_activations.to(self.device), valid_tokens.to(self.device)
 
   
     @property
