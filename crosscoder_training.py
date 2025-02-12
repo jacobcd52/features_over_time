@@ -8,17 +8,18 @@ from trainers.top_k import TopKTrainer, AutoEncoderTopK
 from training import trainSAE
 
 device = "cuda:0"
-dtype = t.float32
+dtype = t.bfloat16
 
 #%%
 layer = 4
-expansion = 16
+expansion = 8 #128
 num_tokens = int(500e6)
 out_batch_size = 8192 * 2
+n_init_batches = 10
 
 submodule_list = []
 model_list = []
-for step in [1, 16, 128, 512, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 143000]:
+for step in [1, 128, 256, 512, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 143000]:
     model = LanguageModel(
         "EleutherAI/pythia-70m", 
         revision=f"step{step}", 
@@ -63,7 +64,7 @@ buffer = MultiModelActivationBuffer(
     refresh_batch_size=512,
     out_batch_size=out_batch_size,
     rescale_acts=True,
-    n_init_batches=1,
+    n_init_batches=n_init_batches,
     remove_bos=True
 )  # buffer will yield batches of tensors of dimension = submodule's output dimension
 
@@ -90,7 +91,7 @@ ae = trainSAE(
     use_wandb=True,
     wandb_project="features over time",
     log_steps=20,
-    hf_repo_out="jacobcd52/features_over_time",
+    hf_repo_out="jacobcd52/features_over_time_narrow",
     save_dir="/root/features_over_time/checkpoints/",
 )
 # %%
