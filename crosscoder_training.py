@@ -12,7 +12,7 @@ dtype = t.bfloat16
 
 #%%
 layer = 4
-expansion = 128
+expansion = 8
 num_tokens = int(200e6)
 out_batch_size = 8192 * 2
 n_init_batches = 10
@@ -91,7 +91,7 @@ ae = trainSAE(
     use_wandb=True,
     wandb_project="features over time",
     log_steps=20,
-    hf_repo_out="jacobcd52/features_over_time_wide",
+    hf_repo_out="jacobcd52/features_over_time_narrow",
     save_dir="/root/features_over_time/checkpoints/",
 )
 # %%
